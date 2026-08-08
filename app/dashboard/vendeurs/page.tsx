@@ -1159,7 +1159,14 @@ export default function VendeursPage() {
                         <div style={{ display: "flex", gap: "8px" }}>
                           <button onClick={() => setSelectedId(v.id)} style={{ flex: 1, padding: "8px", background: "#2a3050", border: "none", borderRadius: "10px", color: "#aaa", fontSize: "11px", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>👁️ Détail</button>
                           {can.modifye && (
-                            <button onClick={() => { setEditingVdr(v); setShowVdrModal(true); }} style={{ flex: 1, padding: "8px", background: "#1a2a3a", border: "none", borderRadius: "10px", color: "#3498db", fontSize: "11px", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>✏️ Modifier</button>
+                            <button onClick={() => {
+  if ((v.balance ?? 0) !== 0) {
+    notify(`❌ ${v.nom} gen yon balans de ${fmt(v.balance ?? 0)}. Modifye pa posib toutotan balans lan pa $0.00.`, "#e74c3c");
+    return;
+  }
+  setEditingVdr(v);
+  setShowVdrModal(true);
+}} style={{ flex: 1, padding: "8px", background: "#1a2a3a", border: "none", borderRadius: "10px", color: "#3498db", fontSize: "11px", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>✏️ Modifier</button>
                           )}
                           {can.siprime && (
                             <button onClick={() => setConfirmDelVdr(v)} disabled={busyIds.has(v.id)} style={{ padding: "8px 12px", background: "#2a0a0a", border: "none", borderRadius: "10px", color: busyIds.has(v.id) ? "#666" : "#e74c3c", fontSize: "11px", fontWeight: 700, cursor: busyIds.has(v.id) ? "default" : "pointer", fontFamily: "inherit" }}>🗑️</button>

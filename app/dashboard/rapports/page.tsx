@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { db } from "@/lib/firebase";
 import { doc, getDoc, collection, getDocs, query, orderBy } from "firebase/firestore";
+import { getAuth, onAuthStateChanged } from "firebase/auth";
 
 // ══════════════════════════════════════════════════════════════════════════
 // TYPES
@@ -31,14 +32,24 @@ interface Vente {
   grandTotal: number;
   date: string;
   note?: string;
+  annule?: boolean; // ← vant ki annile pa dwe konte nan stat yo
+}
+
+interface HistEntry {
+  type: "vente" | "annulation" | "restauration" | "retrait" | "depot";
+  date: string;
+  montant: number;
+  description: string;
+  note?: string;
 }
 
 interface Vendeur {
   id: string;
   nom: string;
   couleur: string;
+  balance: number;        // ← ranplase 'retraits' — se sa paj Vandè a anrejistre kounye a
   ventes: Vente[];
-  retraits: { id: string; montant: number; date: string }[];
+  historique: HistEntry[]; // ← ranplase 'retraits'
 }
 
 interface RapportData {
@@ -60,6 +71,14 @@ function formatDateFull(val: any) {
     const d = val?.toDate ? val.toDate() : new Date(val);
     return d.toLocaleDateString("fr-FR", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
   } catch { return "—"; }
+}
+// Total retrè yon vandè, kalkile apati istorik la (olye ansyen chan 'retraits' ki pa egziste ankò)
+function totalRetraitsOf(v: Vendeur): number {
+  return (v.historique ?? []).filter((h) => h.type === "retrait").reduce((s, h) => s + Math.abs(h.montant), 0);
+}
+// Vant aktif yo sèlman (pa gen vant ki annile)
+function ventesActives(v: Vendeur): Vente[] {
+  return v.ventes.filter((x) => !x.annule);
 }
 
 // ── Stat Card ──────────────────────────────────────────────────────────────
@@ -89,33 +108,54 @@ export default function RapportsPage() {
   const [activeTab, setActiveTab] = useState<"overview" | "commandes" | "vendeurs" | "produits">("overview");
   const [filtre, setFiltre]     = useState<"tout" | "7j" | "30j" | "90j">("tout");
 
-  // ── Load all data ──────────────────────────────────────────────────
+  // ── Load all data — tann otantifikasyon Firebase anvan nenpòt lekti ──
   useEffect(() => {
-    const load = async () => {
+    const auth = getAuth();
+    const unsub = onAuthStateChanged(auth, async (user) => {
+      if (!user) {
+        // Pa gen moun konekte — Firestore ap refize aksè selon règ yo
+        console.warn("Rapports: okenn itilizatè konekte, done demo yo ap itilize.");
+        setData({ commandes: SAMPLE_COMMANDES, vendeurs: SAMPLE_VENDEURS, lastUpdated: new Date().toISOString() });
+        setLoading(false);
+        return;
+      }
+
+      // Load commandes
+      let commandes: Commande[] = [];
       try {
-        // Load commandes
-        let commandes: Commande[] = [];
-        try {
-          const snap = await getDocs(query(collection(db, "commandes"), orderBy("createdAt", "desc")));
-          commandes = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Commande));
-        } catch { commandes = SAMPLE_COMMANDES; }
+        const snap = await getDocs(query(collection(db, "commandes"), orderBy("createdAt", "desc")));
+        commandes = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Commande));
+      } catch (err) {
+        console.error("Rapports: erè chajman commandes —", err);
+        commandes = SAMPLE_COMMANDES;
+      }
 
-        // Load vendeurs from vendeursite/sitewebvendeur
-        let vendeurs: Vendeur[] = [];
-        try {
-          const vSnap = await getDoc(doc(db, "vendeursite", "sitevendeur"));
-          if (vSnap.exists() && vSnap.data()?.vendeurs?.length > 0) {
-            vendeurs = vSnap.data().vendeurs as Vendeur[];
-          } else { vendeurs = SAMPLE_VENDEURS; }
-        } catch { vendeurs = SAMPLE_VENDEURS; }
+      // Load vendeurs from vendeursite/sitevendeur
+      let vendeurs: Vendeur[] = [];
+      try {
+        const vSnap = await getDoc(doc(db, "vendeursite", "sitevendeur"));
+        if (vSnap.exists() && vSnap.data()?.vendeurs?.length > 0) {
+          vendeurs = (vSnap.data().vendeurs as any[]).map((raw) => ({
+            id: raw.id,
+            nom: raw.nom ?? "",
+            couleur: raw.couleur ?? "#2ecc71",
+            balance: typeof raw.balance === "number" ? raw.balance : 0,
+            ventes: raw.ventes ?? [],
+            historique: raw.historique ?? [],
+          }));
+        } else {
+          console.warn("Rapports: dokiman vendeursite/sitevendeur vid oswa pa egziste, done demo yo ap itilize.");
+          vendeurs = SAMPLE_VENDEURS;
+        }
+      } catch (err) {
+        console.error("Rapports: erè chajman vendeursite/sitevendeur —", err);
+        vendeurs = SAMPLE_VENDEURS;
+      }
 
-        const now = new Date().toISOString();
-        setData({ commandes, vendeurs, lastUpdated: now });
-
-      } catch { /* use samples */ }
-      finally { setLoading(false); }
-    };
-    load();
+      setData({ commandes, vendeurs, lastUpdated: new Date().toISOString() });
+      setLoading(false);
+    });
+    return () => unsub();
   }, []);
 
   // ── Date filter ────────────────────────────────────────────────────
@@ -133,7 +173,7 @@ export default function RapportsPage() {
 
   const filteredCommandes = filterByDate(data.commandes);
   const allVentes = data.vendeurs.flatMap((v) =>
-    filterByDate(v.ventes).map((s) => ({ ...s, vendeurNom: v.nom, vendeurCouleur: v.couleur }))
+    filterByDate(ventesActives(v)).map((s) => ({ ...s, vendeurNom: v.nom, vendeurCouleur: v.couleur }))
   );
 
   // ── Computed stats ─────────────────────────────────────────────────
@@ -144,8 +184,8 @@ export default function RapportsPage() {
   const totalRevenuCommandes = cmdConfirmees.reduce((s, c) => s + c.prix, 0);
   const totalRevenuVentes    = allVentes.reduce((s, v) => s + v.prixVente, 0);
   const totalCommissions     = allVentes.reduce((s, v) => s + v.grandTotal, 0);
-  const totalRetraits        = data.vendeurs.reduce((s, v) => s + v.retraits.reduce((r, x) => r + x.montant, 0), 0);
-  const balanceVendeurs      = totalCommissions - totalRetraits;
+  const totalRetraits        = data.vendeurs.reduce((s, v) => s + totalRetraitsOf(v), 0);
+  const balanceVendeurs      = data.vendeurs.reduce((s, v) => s + (v.balance ?? 0), 0);
 
   // ── Top produits ───────────────────────────────────────────────────
   const prodMap: Record<string, { nom: string; count: number; total: number }> = {};
@@ -281,9 +321,8 @@ export default function RapportsPage() {
             <div style={{ background: "#1a1f2e", borderRadius: "16px", padding: "14px" }}>
               <p style={{ margin: "0 0 12px", fontSize: "13px", fontWeight: 800, color: "#fff" }}>🪪 Résumé Vendeurs</p>
               {data.vendeurs.map((v) => {
-                const comm = v.ventes.reduce((s, x) => s + x.grandTotal, 0);
-                const retr = v.retraits.reduce((s, x) => s + x.montant, 0);
-                const bal  = comm - retr;
+                const comm = ventesActives(v).reduce((s, x) => s + x.grandTotal, 0);
+                const bal  = v.balance ?? 0;
                 return (
                   <div key={v.id} style={{ display: "flex", alignItems: "center", gap: "10px", padding: "10px 0", borderBottom: "1px solid #0d1117" }}>
                     <div style={{ width: "32px", height: "32px", borderRadius: "50%", background: v.couleur, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "13px", fontWeight: 900, color: "#000", flexShrink: 0 }}>
@@ -291,7 +330,7 @@ export default function RapportsPage() {
                     </div>
                     <div style={{ flex: 1 }}>
                       <p style={{ margin: 0, fontSize: "13px", fontWeight: 700, color: "#fff" }}>{v.nom}</p>
-                      <p style={{ margin: 0, fontSize: "10px", color: "#555" }}>{v.ventes.length} ventes • {fmt(comm)} gagné</p>
+                      <p style={{ margin: 0, fontSize: "10px", color: "#555" }}>{ventesActives(v).length} ventes • {fmt(comm)} gagné</p>
                     </div>
                     <p style={{ margin: 0, fontSize: "14px", fontWeight: 900, color: bal >= 0 ? "#2ecc71" : "#e74c3c" }}>{fmt(bal)}</p>
                   </div>
@@ -381,11 +420,11 @@ export default function RapportsPage() {
 
             {/* Vendeur cards */}
             {data.vendeurs.map((v) => {
-              const ventes   = filterByDate(v.ventes);
+              const ventes   = filterByDate(ventesActives(v));
               const comm     = ventes.reduce((s, x) => s + x.grandTotal, 0);
               const ventesT  = ventes.reduce((s, x) => s + x.prixVente, 0);
-              const retrT    = v.retraits.reduce((s, x) => s + x.montant, 0);
-              const bal      = v.ventes.reduce((s, x) => s + x.grandTotal, 0) - retrT;
+              const retrT    = totalRetraitsOf(v);
+              const bal      = v.balance ?? 0;
 
               return (
                 <div key={v.id} style={{ background: "#1a1f2e", borderRadius: "16px", padding: "14px", marginBottom: "10px", borderLeft: `4px solid ${v.couleur}` }}>
@@ -542,17 +581,25 @@ const SAMPLE_COMMANDES: Commande[] = [
 const SAMPLE_VENDEURS: Vendeur[] = [
   {
     id: "v1", nom: "Cesar", couleur: "#2ecc71",
+    balance: 110,
     ventes: [
       { id: "s1", marque: "Dell", modele: "Latitude E7470", produitId: "p001", categorie: "ordinateur", prixStore: 380, prixVente: 440, benefis: 60, komisyon: 20, grandTotal: 80, date: new Date(Date.now() - 86400000).toISOString() },
       { id: "s2", marque: "HP", modele: "EliteBook 840", produitId: "p002", categorie: "ordinateur", prixStore: 340, prixVente: 380, benefis: 40, komisyon: 20, grandTotal: 60, date: new Date(Date.now() - 172800000).toISOString() },
     ],
-    retraits: [{ id: "r1", montant: 30, date: new Date().toISOString() }],
+    historique: [
+      { type: "vente", date: new Date(Date.now() - 172800000).toISOString(), montant: 60, description: "Vente ajoutée" },
+      { type: "vente", date: new Date(Date.now() - 86400000).toISOString(), montant: 80, description: "Vente ajoutée" },
+      { type: "retrait", date: new Date().toISOString(), montant: -30, description: "Retrait effectué" },
+    ],
   },
   {
     id: "v2", nom: "Mrs", couleur: "#3498db",
+    balance: 70,
     ventes: [
       { id: "s3", marque: "Lenovo", modele: "ThinkPad X1", produitId: "p003", categorie: "ordinateur", prixStore: 470, prixVente: 520, benefis: 50, komisyon: 20, grandTotal: 70, date: new Date(Date.now() - 259200000).toISOString() },
     ],
-    retraits: [],
+    historique: [
+      { type: "vente", date: new Date(Date.now() - 259200000).toISOString(), montant: 70, description: "Vente ajoutée" },
+    ],
   },
 ];
