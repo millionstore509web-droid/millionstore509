@@ -23,17 +23,20 @@ interface Vente {
   marque: string;
   modele: string;
   produitId: string;
-  prix: number;
-  commission: number;
-  montantCommission: number;
+  categorie: "ordinateur" | "mini" | "autre";
+  prixStore: number;
+  prixVente: number;
+  benefis: number;
+  komisyon: number;
+  grandTotal: number;
   date: string;
+  note?: string;
 }
 
 interface Vendeur {
   id: string;
   nom: string;
   couleur: string;
-  tauxCommission: number;
   ventes: Vente[];
   retraits: { id: string; montant: number; date: string }[];
 }
@@ -139,8 +142,8 @@ export default function RapportsPage() {
   const cmdAnnulees    = filteredCommandes.filter((c) => c.statut === "annule");
 
   const totalRevenuCommandes = cmdConfirmees.reduce((s, c) => s + c.prix, 0);
-  const totalRevenuVentes    = allVentes.reduce((s, v) => s + v.prix, 0);
-  const totalCommissions     = allVentes.reduce((s, v) => s + v.montantCommission, 0);
+  const totalRevenuVentes    = allVentes.reduce((s, v) => s + v.prixVente, 0);
+  const totalCommissions     = allVentes.reduce((s, v) => s + v.grandTotal, 0);
   const totalRetraits        = data.vendeurs.reduce((s, v) => s + v.retraits.reduce((r, x) => r + x.montant, 0), 0);
   const balanceVendeurs      = totalCommissions - totalRetraits;
 
@@ -150,7 +153,7 @@ export default function RapportsPage() {
     const key = `${v.marque} ${v.modele}`;
     if (!prodMap[key]) prodMap[key] = { nom: key, count: 0, total: 0 };
     prodMap[key].count++;
-    prodMap[key].total += v.prix;
+    prodMap[key].total += v.prixVente;
   });
   const topProduits = Object.values(prodMap).sort((a, b) => b.count - a.count).slice(0, 8);
 
@@ -278,7 +281,7 @@ export default function RapportsPage() {
             <div style={{ background: "#1a1f2e", borderRadius: "16px", padding: "14px" }}>
               <p style={{ margin: "0 0 12px", fontSize: "13px", fontWeight: 800, color: "#fff" }}>🪪 Résumé Vendeurs</p>
               {data.vendeurs.map((v) => {
-                const comm = v.ventes.reduce((s, x) => s + x.montantCommission, 0);
+                const comm = v.ventes.reduce((s, x) => s + x.grandTotal, 0);
                 const retr = v.retraits.reduce((s, x) => s + x.montant, 0);
                 const bal  = comm - retr;
                 return (
@@ -379,10 +382,10 @@ export default function RapportsPage() {
             {/* Vendeur cards */}
             {data.vendeurs.map((v) => {
               const ventes   = filterByDate(v.ventes);
-              const comm     = ventes.reduce((s, x) => s + x.montantCommission, 0);
-              const ventesT  = ventes.reduce((s, x) => s + x.prix, 0);
+              const comm     = ventes.reduce((s, x) => s + x.grandTotal, 0);
+              const ventesT  = ventes.reduce((s, x) => s + x.prixVente, 0);
               const retrT    = v.retraits.reduce((s, x) => s + x.montant, 0);
-              const bal      = v.ventes.reduce((s, x) => s + x.montantCommission, 0) - retrT;
+              const bal      = v.ventes.reduce((s, x) => s + x.grandTotal, 0) - retrT;
 
               return (
                 <div key={v.id} style={{ background: "#1a1f2e", borderRadius: "16px", padding: "14px", marginBottom: "10px", borderLeft: `4px solid ${v.couleur}` }}>
@@ -393,7 +396,7 @@ export default function RapportsPage() {
                     </div>
                     <div style={{ flex: 1 }}>
                       <p style={{ margin: 0, fontSize: "15px", fontWeight: 800, color: "#fff" }}>{v.nom}</p>
-                      <p style={{ margin: 0, fontSize: "10px", color: "#555" }}>{ventes.length} ventes • {v.tauxCommission}% commission</p>
+                      <p style={{ margin: 0, fontSize: "10px", color: "#555" }}>{ventes.length} ventes</p>
                     </div>
                     <p style={{ margin: 0, fontSize: "16px", fontWeight: 900, color: bal >= 0 ? "#2ecc71" : "#e74c3c" }}>{fmt(bal)}</p>
                   </div>
@@ -423,8 +426,8 @@ export default function RapportsPage() {
                             <p style={{ margin: 0, fontSize: "9px", color: "#555" }}>🔖 {vente.produitId} • {formatDate(vente.date)}</p>
                           </div>
                           <div style={{ textAlign: "right" }}>
-                            <p style={{ margin: 0, fontSize: "12px", fontWeight: 700, color: "#fff" }}>{fmt(vente.prix)}</p>
-                            <p style={{ margin: 0, fontSize: "10px", color: "#2ecc71" }}>+{fmt(vente.montantCommission)}</p>
+                            <p style={{ margin: 0, fontSize: "12px", fontWeight: 700, color: "#fff" }}>{fmt(vente.prixVente)}</p>
+                            <p style={{ margin: 0, fontSize: "10px", color: "#2ecc71" }}>+{fmt(vente.grandTotal)}</p>
                           </div>
                         </div>
                       ))}
@@ -498,8 +501,8 @@ export default function RapportsPage() {
                       <p style={{ margin: 0, fontSize: "10px", color: "#555" }}>🔖 {v.produitId} • {(v as any).vendeurNom} • {formatDate(v.date)}</p>
                     </div>
                     <div style={{ textAlign: "right", flexShrink: 0 }}>
-                      <p style={{ margin: 0, fontSize: "13px", fontWeight: 800, color: "#fff" }}>{fmt(v.prix)}</p>
-                      <p style={{ margin: 0, fontSize: "10px", color: "#2ecc71" }}>+{fmt(v.montantCommission)}</p>
+                      <p style={{ margin: 0, fontSize: "13px", fontWeight: 800, color: "#fff" }}>{fmt(v.prixVente)}</p>
+                      <p style={{ margin: 0, fontSize: "10px", color: "#2ecc71" }}>+{fmt(v.grandTotal)}</p>
                     </div>
                   </div>
                 ))}
@@ -538,17 +541,17 @@ const SAMPLE_COMMANDES: Commande[] = [
 
 const SAMPLE_VENDEURS: Vendeur[] = [
   {
-    id: "v1", nom: "Cesar", couleur: "#2ecc71", tauxCommission: 10,
+    id: "v1", nom: "Cesar", couleur: "#2ecc71",
     ventes: [
-      { id: "s1", marque: "Dell", modele: "Latitude E7470", produitId: "p001", prix: 440, commission: 10, montantCommission: 44, date: new Date(Date.now() - 86400000).toISOString() },
-      { id: "s2", marque: "HP", modele: "EliteBook 840", produitId: "p002", prix: 380, commission: 10, montantCommission: 38, date: new Date(Date.now() - 172800000).toISOString() },
+      { id: "s1", marque: "Dell", modele: "Latitude E7470", produitId: "p001", categorie: "ordinateur", prixStore: 380, prixVente: 440, benefis: 60, komisyon: 20, grandTotal: 80, date: new Date(Date.now() - 86400000).toISOString() },
+      { id: "s2", marque: "HP", modele: "EliteBook 840", produitId: "p002", categorie: "ordinateur", prixStore: 340, prixVente: 380, benefis: 40, komisyon: 20, grandTotal: 60, date: new Date(Date.now() - 172800000).toISOString() },
     ],
     retraits: [{ id: "r1", montant: 30, date: new Date().toISOString() }],
   },
   {
-    id: "v2", nom: "Mrs", couleur: "#3498db", tauxCommission: 8,
+    id: "v2", nom: "Mrs", couleur: "#3498db",
     ventes: [
-      { id: "s3", marque: "Lenovo", modele: "ThinkPad X1", produitId: "p003", prix: 520, commission: 8, montantCommission: 41.6, date: new Date(Date.now() - 259200000).toISOString() },
+      { id: "s3", marque: "Lenovo", modele: "ThinkPad X1", produitId: "p003", categorie: "ordinateur", prixStore: 470, prixVente: 520, benefis: 50, komisyon: 20, grandTotal: 70, date: new Date(Date.now() - 259200000).toISOString() },
     ],
     retraits: [],
   },

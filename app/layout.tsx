@@ -71,9 +71,9 @@ export default function RootLayout({
         />
       </head>
       <body>
-        {children}
         {/* Bannière d'installation PWA + indicateur offline */}
         <InstallBanner />
+        {children}
       </body>
     </html>
   );

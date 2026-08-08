@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { db } from "@/lib/firebase";
-import { doc, getDoc, setDoc } from "firebase/firestore";
+import { doc, getDoc, updateDoc } from "firebase/firestore";
 import { getAuth, updatePassword, updateProfile, reauthenticateWithCredential, EmailAuthProvider } from "firebase/auth";
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -100,22 +100,25 @@ export default function ParametrePage() {
   useEffect(() => {
     const load = async () => {
       try {
-        const uid = user?.uid ?? "default";
-        const snap = await getDoc(doc(db, "parametresite", "siteweb"));
+        const uid = user?.uid;
+        if (!uid) { setLoading(false); return; }
+        const snap = await getDoc(doc(db, "siteUsers", uid));
         if (snap.exists()) {
           const data = snap.data();
-          // Load user-specific profile by uid
-          const userProfile = data?.users?.[uid];
-          if (userProfile) {
-            setProfile({ ...profile, ...userProfile, email: user?.email ?? "" });
-          } else {
-            // Fallback: use Firebase Auth display name
-            setProfile((p) => ({
-              ...p,
-              nom: user?.displayName ?? "",
-              email: user?.email ?? "",
-            }));
-          }
+          setProfile({
+            nom: data.nom ?? "",
+            username: data.username ?? "",
+            role: data.role ?? "staff",
+            photoUrl: data.photoUrl ?? "",
+            email: user?.email ?? "",
+          });
+        } else {
+          // Fallback: use Firebase Auth display name
+          setProfile((p) => ({
+            ...p,
+            nom: user?.displayName ?? "",
+            email: user?.email ?? "",
+          }));
         }
       } catch { /* use defaults */ }
       finally { setLoading(false); }
@@ -126,28 +129,18 @@ export default function ParametrePage() {
   // ── Save profile ─────────────────────────────────────────────────────
   const saveProfile = async () => {
     if (!profile.nom.trim()) { showToast("Le nom ne peut pas être vide.", "error"); return; }
+    if (!user?.uid) { showToast("Non connecté.", "error"); return; }
     setSavingProfile(true);
     try {
-      const uid = user?.uid ?? "default";
-      // Update Firestore parametresite/siteweb
-      const snap = await getDoc(doc(db, "parametresite", "siteweb"));
-      const existing = snap.exists() ? snap.data() : {};
-      await setDoc(doc(db, "parametresite", "siteweb"), {
-        ...existing,
-        users: {
-          ...(existing?.users ?? {}),
-          [uid]: {
-            nom: profile.nom,
-            username: profile.username,
-            role: profile.role,
-            photoUrl: profile.photoUrl ?? "",
-            email: user?.email ?? "",
-            updatedAt: new Date().toISOString(),
-          },
-        },
+      // Modifye sèlman chan pwofil yo nan dokiman siteUsers/{uid} — pa touche
+      // permissions, role, loginAttempts, elatriye.
+      await updateDoc(doc(db, "siteUsers", user.uid), {
+        nom: profile.nom,
+        username: profile.username,
+        photoUrl: profile.photoUrl ?? "",
       });
       // Update Firebase Auth display name
-      if (user) await updateProfile(user, { displayName: profile.nom });
+      await updateProfile(user, { displayName: profile.nom });
       showToast("Profil mis à jour!", "success");
     } catch (e) {
       showToast("Erreur lors de la sauvegarde.", "error");
@@ -433,4 +426,4 @@ export default function ParametrePage() {
       `}</style>
     </div>
   );
-}
+}  

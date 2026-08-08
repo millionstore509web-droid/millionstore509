@@ -95,7 +95,7 @@ export function InstallBanner() {
             Installer MillionStore
           </p>
           <p style={{ margin: "3px 0 0", fontSize: "11px", color: "#aaa", lineHeight: 1.3 }}>
-            Ajoute sou ekran prensipal ou
+            Ajoutez à votre écran d'accueil
           </p>
         </div>
 
