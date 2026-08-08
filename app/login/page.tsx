@@ -63,6 +63,8 @@ function RegisterModal({ onClose, onSuccess }: { onClose: () => void; onSuccess:
   const [email, setEmail]       = useState("");
   const [password, setPassword] = useState("");
   const [showPass, setShowPass] = useState(false);
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showConfirmPass, setShowConfirmPass] = useState(false);
   const [rep1, setRep1]         = useState("");
   const [rep2, setRep2]         = useState("");
   const [rep3, setRep3]         = useState("");
@@ -75,6 +77,7 @@ function RegisterModal({ onClose, onSuccess }: { onClose: () => void; onSuccess:
       setError("Le nom, l'email et le mot de passe sont obligatoires."); return;
     }
     if (password.length < 6) { setError("Le mot de passe doit contenir au moins 6 caractères."); return; }
+    if (password !== confirmPassword) { setError("Les mots de passe ne correspondent pas."); return; }
     setError(""); setStep("security");
   };
 
@@ -222,7 +225,7 @@ function RegisterModal({ onClose, onSuccess }: { onClose: () => void; onSuccess:
 
               {/* Barre de force */}
               {password && (
-                <div style={{ marginBottom: "18px" }}>
+                <div style={{ marginBottom: "12px" }}>
                   <div style={{ height: "4px", borderRadius: "999px", background: "#f0f0f0", overflow: "hidden" }}>
                     <div style={{
                       height: "100%", borderRadius: "999px",
@@ -237,7 +240,27 @@ function RegisterModal({ onClose, onSuccess }: { onClose: () => void; onSuccess:
                 </div>
               )}
 
-              <button onClick={goToSecurity} disabled={loading} style={{ width: "100%", padding: "14px", background: "#1a1a2e", color: "#fff", border: "none", borderRadius: "14px", fontSize: "14px", fontWeight: 800, cursor: loading ? "not-allowed" : "pointer", fontFamily: "inherit", marginTop: password ? 0 : "18px" }}>
+              <p style={{ margin: "0 0 5px", fontSize: "11px", fontWeight: 700, color: "#888", letterSpacing: "0.06em" }}>CONFIRMER LE MOT DE PASSE *</p>
+              <div style={{ display: "flex", alignItems: "center", border: `1.5px solid ${confirmPassword && confirmPassword !== password ? "#e63946" : "#e8e8e8"}`, borderRadius: "12px", padding: "11px 14px", gap: "10px", marginBottom: "6px", background: "#f8f8f8" }}>
+                <input
+                  type={showConfirmPass ? "text" : "password"}
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder="••••••••"
+                  style={{ flex: 1, border: "none", outline: "none", fontSize: "14px", fontFamily: "inherit", color: "#333", background: "transparent" }}
+                />
+                <button type="button" onClick={() => setShowConfirmPass(!showConfirmPass)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: "15px", padding: 0 }}>
+                  {showConfirmPass ? "🙈" : "👁️"}
+                </button>
+              </div>
+              {confirmPassword && confirmPassword !== password && (
+                <p style={{ margin: "0 0 12px", fontSize: "11px", color: "#e63946" }}>❌ Les mots de passe ne correspondent pas</p>
+              )}
+              {confirmPassword && confirmPassword === password && (
+                <p style={{ margin: "0 0 18px", fontSize: "11px", color: "#1a9e6e" }}>✅ Les mots de passe correspondent</p>
+              )}
+
+              <button onClick={goToSecurity} disabled={loading} style={{ width: "100%", padding: "14px", background: "#1a1a2e", color: "#fff", border: "none", borderRadius: "14px", fontSize: "14px", fontWeight: 800, cursor: loading ? "not-allowed" : "pointer", fontFamily: "inherit" }}>
                 Suivant → Questions de sécurité
               </button>
             </>
