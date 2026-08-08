@@ -10,6 +10,7 @@ import { getAuth, createUserWithEmailAndPassword } from "firebase/auth";
 // TYPES
 // ══════════════════════════════════════════════════════════════════════════
 type Action = "voir" | "ajouter" | "modifier" | "supprimer";
+type VendeurAction = "voir" | "ajoute" | "modifye" | "siprime" | "retrait" | "depot" | "annule" | "restore";
 
 interface SectionPermission {
   voir: boolean;
@@ -18,11 +19,23 @@ interface SectionPermission {
   supprimer: boolean;
 }
 
+// Pèmisyon espesyal pou seksyon Vandè a — matche egzatteman sa paj Vandè a li
+interface VendeurPermission {
+  voir: boolean;
+  ajoute: boolean;
+  modifye: boolean;
+  siprime: boolean;
+  retrait: boolean;
+  depot: boolean;
+  annule: boolean;
+  restore: boolean;
+}
+
 interface Permissions {
   rapports:      SectionPermission;
   parametre:     SectionPermission;
   utilisateurs:  SectionPermission;
-  vendeurs:      SectionPermission;
+  vendeurs:      VendeurPermission;   // ← chanje: pa SectionPermission ankò
   commandes:     SectionPermission;
   modifierSite:  SectionPermission;
   produits:      SectionPermission;
@@ -52,13 +65,17 @@ const emptySection = (): SectionPermission => ({ voir: false, ajouter: false, mo
 const fullSection  = (): SectionPermission => ({ voir: true,  ajouter: true,  modifier: true,  supprimer: true  });
 const voirOnly     = (): SectionPermission => ({ voir: true,  ajouter: false, modifier: false, supprimer: false });
 
+const emptyVendeur    = (): VendeurPermission => ({ voir: false, ajoute: false, modifye: false, siprime: false, retrait: false, depot: false, annule: false, restore: false });
+const fullVendeur     = (): VendeurPermission => ({ voir: true,  ajoute: true,  modifye: true,  siprime: true,  retrait: true,  depot: true,  annule: true,  restore: true  });
+const voirOnlyVendeur = (): VendeurPermission => ({ voir: true,  ajoute: false, modifye: false, siprime: false, retrait: false, depot: false, annule: false, restore: false });
+
 const defaultPermissions = (role: "admin" | "staff" | "vendeur"): Permissions => {
   if (role === "admin") {
     return {
       rapports:     fullSection(),
       parametre:    fullSection(),
       utilisateurs: fullSection(),
-      vendeurs:     fullSection(),
+      vendeurs:     fullVendeur(),
       commandes:    fullSection(),
       modifierSite: fullSection(),
       produits:     fullSection(),
@@ -69,7 +86,7 @@ const defaultPermissions = (role: "admin" | "staff" | "vendeur"): Permissions =>
       rapports:     voirOnly(),
       parametre:    { voir: true, ajouter: false, modifier: true, supprimer: false }, // chanje modpas
       utilisateurs: emptySection(),
-      vendeurs:     voirOnly(),
+      vendeurs:     voirOnlyVendeur(),
       commandes:    emptySection(),
       modifierSite: emptySection(),
       produits:     emptySection(),
@@ -80,7 +97,7 @@ const defaultPermissions = (role: "admin" | "staff" | "vendeur"): Permissions =>
     rapports:     emptySection(),
     parametre:    emptySection(),
     utilisateurs: emptySection(),
-    vendeurs:     emptySection(),
+    vendeurs:     emptyVendeur(),
     commandes:    emptySection(),
     modifierSite: emptySection(),
     produits:     emptySection(),
@@ -110,6 +127,18 @@ const ACTION_CONFIG: { key: Action; label: string; color: string }[] = [
   { key: "supprimer", label: "Supprimer", color: "#e63946" },
 ];
 
+// 8 aksyon espesifik seksyon Vandè a
+const VENDEUR_ACTION_CONFIG: { key: VendeurAction; label: string; color: string }[] = [
+  { key: "voir",    label: "Voir",      color: "#3498db" },
+  { key: "ajoute",  label: "Ajouter",   color: "#1a9e6e" },
+  { key: "modifye", label: "Modifier",  color: "#f79f1f" },
+  { key: "siprime", label: "Supprimer", color: "#e63946" },
+  { key: "retrait", label: "Retrait",   color: "#e67e22" },
+  { key: "depot",   label: "Dépôt",     color: "#2979ff" },
+  { key: "annule",  label: "Annuler",   color: "#9b59b6" },
+  { key: "restore", label: "Restaurer", color: "#1abc9c" },
+];
+
 function isBlocked(user: User): boolean {
   if (!user.blockedUntil) return false;
   return new Date(user.blockedUntil) > new Date();
@@ -123,6 +152,14 @@ function blockTimeLeft(user: User): string {
   return mins > 60 ? `${Math.ceil(mins / 60)}h` : `${mins} min`;
 }
 
+// Total pèmisyon aktive nan yon objè Permissions, kèlkeswa konbyen chan chak seksyon genyen
+function countOn(permissions: Permissions): number {
+  return Object.values(permissions).reduce((sum, section) => sum + Object.values(section).filter(Boolean).length, 0);
+}
+function countPossible(permissions: Permissions): number {
+  return Object.values(permissions).reduce((sum, section) => sum + Object.keys(section).length, 0);
+}
+
 const SAMPLE_USERS: User[] = [
   {
     id: "u1", nom: "Jean Admin", username: "admin",
@@ -134,7 +171,7 @@ const SAMPLE_USERS: User[] = [
 ];
 
 // ══════════════════════════════════════════════════════════════════════════
-// PERMISSION ROW — avèk Voir
+// PERMISSION ROW — seksyon estanda (Voir/Ajouter/Modifier/Supprimer)
 // ══════════════════════════════════════════════════════════════════════════
 function PermRow({ label, emoji, perms, onChange }: {
   label: string; emoji: string;
@@ -176,6 +213,48 @@ function PermRow({ label, emoji, perms, onChange }: {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
+// PERMISSION ROW — seksyon Vandè a (8 aksyon espesifik)
+// ══════════════════════════════════════════════════════════════════════════
+function PermRowVendeur({ label, emoji, perms, onChange }: {
+  label: string; emoji: string;
+  perms: VendeurPermission;
+  onChange: (action: VendeurAction, val: boolean) => void;
+}) {
+  return (
+    <div style={{ background: "#f8f9fa", borderRadius: "14px", padding: "12px 14px", marginBottom: "8px", border: "1px solid #eef0f4" }}>
+      <p style={{ margin: "0 0 10px", fontSize: "13px", fontWeight: 800, color: "#1a1a2e" }}>
+        {emoji} {label} <span style={{ fontSize: "10px", fontWeight: 600, color: "#aaa" }}>(pèmisyon detaye)</span>
+      </p>
+      <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
+        {VENDEUR_ACTION_CONFIG.map(({ key, label: aLabel, color }) => {
+          const on = perms[key];
+          return (
+            <button key={key} onClick={() => onChange(key, !on)} style={{
+              display: "flex", alignItems: "center", gap: "5px",
+              padding: "6px 12px", borderRadius: "999px",
+              border: `1.5px solid ${on ? color : "#ddd"}`,
+              background: on ? `${color}18` : "#fff",
+              color: on ? color : "#bbb",
+              fontSize: "11px", fontWeight: 700,
+              cursor: "pointer", fontFamily: "inherit",
+              transition: "all 0.15s",
+            }}>
+              <span style={{
+                width: "14px", height: "14px", borderRadius: "50%",
+                background: on ? color : "#ddd",
+                display: "inline-flex", alignItems: "center", justifyContent: "center",
+                fontSize: "8px", color: "#fff", fontWeight: 900, flexShrink: 0,
+              }}>{on ? "✓" : "✕"}</span>
+              {aLabel}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════
 // PERMISSION SHEET
 // ══════════════════════════════════════════════════════════════════════════
 function PermissionSheet({ user, onClose, onSave }: {
@@ -184,16 +263,18 @@ function PermissionSheet({ user, onClose, onSave }: {
   const [perms, setPerms] = useState<Permissions>(JSON.parse(JSON.stringify(user.permissions)));
   const roleC = ROLE_COLORS[user.role];
 
-  const toggle = (section: keyof Permissions, action: Action, val: boolean) => {
-    setPerms((prev) => ({ ...prev, [section]: { ...prev[section], [action]: val } }));
+  // Toggle jenerik — mache pou seksyon estanda (4 chan) e pou vandè (8 chan)
+  const toggle = (section: keyof Permissions, action: string, val: boolean) => {
+    setPerms((prev) => ({
+      ...prev,
+      [section]: { ...(prev[section] as any), [action]: val },
+    }));
   };
 
   const setAll = (full: boolean) => setPerms(defaultPermissions(full ? "admin" : "staff"));
 
-  const totalOn = Object.values(perms).reduce(
-    (s, p) => s + (p.voir ? 1 : 0) + (p.ajouter ? 1 : 0) + (p.modifier ? 1 : 0) + (p.supprimer ? 1 : 0), 0
-  );
-  const totalPossible = SECTION_LABELS.length * 4;
+  const totalOn = countOn(perms);
+  const totalPossible = countPossible(perms);
 
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 9000, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
@@ -219,10 +300,25 @@ function PermissionSheet({ user, onClose, onSave }: {
         </div>
 
         <div style={{ padding: "0 16px" }}>
-          {SECTION_LABELS.map(({ key, label, emoji }) => (
-            <PermRow key={key} label={label} emoji={emoji} perms={perms[key]}
-              onChange={(action, val) => toggle(key, action, val)} />
-          ))}
+          {SECTION_LABELS.map(({ key, label, emoji }) =>
+            key === "vendeurs" ? (
+              <PermRowVendeur
+                key={key}
+                label={label}
+                emoji={emoji}
+                perms={perms.vendeurs}
+                onChange={(action, val) => toggle("vendeurs", action, val)}
+              />
+            ) : (
+              <PermRow
+                key={key}
+                label={label}
+                emoji={emoji}
+                perms={perms[key] as SectionPermission}
+                onChange={(action, val) => toggle(key, action, val)}
+              />
+            )
+          )}
         </div>
 
         <div style={{ padding: "16px 16px 0" }}>
@@ -538,10 +634,8 @@ export default function UtilisateursPage() {
             const roleC = ROLE_COLORS[user.role];
             const blocked = isBlocked(user);
             const timeLeft = blockTimeLeft(user);
-            const totalOn = Object.values(user.permissions).reduce(
-              (sum, s) => sum + (s.voir ? 1 : 0) + (s.ajouter ? 1 : 0) + (s.modifier ? 1 : 0) + (s.supprimer ? 1 : 0), 0
-            );
-            const totalPossible = SECTION_LABELS.length * 4;
+            const totalOn = countOn(user.permissions);
+            const totalPossible = countPossible(user.permissions);
 
             return (
               <div key={user.id} style={{ background: "#fff", borderRadius: "16px", marginBottom: "10px", boxShadow: "0 1px 6px rgba(0,0,0,0.07)", overflow: "hidden", opacity: user.actif ? 1 : 0.55, borderLeft: blocked ? "4px solid #e63946" : "4px solid transparent" }}>
@@ -597,10 +691,11 @@ export default function UtilisateursPage() {
                   <div style={{ display: "flex", flexWrap: "wrap", gap: "4px", marginBottom: "10px" }}>
                     {SECTION_LABELS.map(({ key, emoji }) => {
                       const p = user.permissions[key];
-                      const count = (p.voir ? 1 : 0) + (p.ajouter ? 1 : 0) + (p.modifier ? 1 : 0) + (p.supprimer ? 1 : 0);
+                      const count = Object.values(p).filter(Boolean).length;
+                      const outOf = Object.keys(p).length;
                       return (
                         <span key={key} style={{ background: count > 0 ? "#1a1a2e10" : "#f0f0f0", color: count > 0 ? "#1a1a2e" : "#ccc", padding: "3px 8px", borderRadius: "999px", fontSize: "10px", fontWeight: 700 }}>
-                          {emoji} {count}/4
+                          {emoji} {count}/{outOf}
                         </span>
                       );
                     })}
